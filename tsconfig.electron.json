@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "outDir": "app/dist",
+    "rootDir": "app",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "typeRoots": ["frontend/node_modules/@types"],
+    "paths": {
+      "electron": ["frontend/node_modules/electron/electron.d.ts"]
+    },
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["app/**/*.ts"]
+}
