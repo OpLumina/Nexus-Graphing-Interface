@@ -39,8 +39,12 @@ export function CommandPalette({ onClose }: Props) {
       label: "Check Backend",
       description: "Ping the math engine",
       run: async () => {
-        const r = await health();
-        alert(r.ok ? "Backend OK" : "Backend unreachable");
+        try {
+          const r = await health();
+          alert(r.ok ? "Backend OK" : "Backend unreachable");
+        } catch {
+          alert("Backend unreachable");
+        }
         onClose();
       },
     },

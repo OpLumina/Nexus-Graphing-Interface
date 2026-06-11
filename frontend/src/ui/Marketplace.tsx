@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  fetchRegistry, fetchAndInstallPlugin, installFromFile,
+  fetchRegistry, fetchAndInstallPlugin, installFromFile, installBundled,
   loadInstalledPlugins, uninstallPlugin, setPluginEnabled,
   getRegistryUrl, setRegistryUrl,
 } from "../plugins/manager";
@@ -14,6 +14,8 @@ const TAG_COLORS: Record<string, string> = {
   calculus: "#61acff", series: "#6be08e", "signal processing": "#cc73ff",
   complex: "#ffc935", visualization: "#ff8c33", "differential equations": "#ff6b6b",
   dynamics: "#38e0e0", statistics: "#ff74c8", data: "#61acff",
+  integration: "#6be08e", geometry: "#ffc935", numeric: "#38e0e0",
+  algebra: "#cc73ff", analysis: "#ff8c33", utility: "#9aa7b8",
 };
 
 function Tag({ label }: { label: string }) {
@@ -47,6 +49,14 @@ export function Marketplace({ onClose }: Props) {
   const refresh = () => setInstalled(loadInstalledPlugins());
 
   const isInstalled = (id: string) => installed.some(p => p.manifest.id === id);
+
+  const doInstallBundled = (id: string) => {
+    setInstalling(id);
+    const res = installBundled(id);
+    setStatus({ id, msg: res.ok ? `Installed "${res.name}" — reload to activate` : (res.error ?? "Failed"), ok: res.ok });
+    refresh();
+    setInstalling(null);
+  };
 
   const doInstallUrl = async (url: string) => {
     if (!url.trim()) return;
@@ -177,7 +187,7 @@ export function Marketplace({ onClose }: Props) {
                         </span>
                       ) : (
                         <button
-                          onClick={() => p.url ? doInstallUrl(p.url) : setStatus({ id: p.id, msg: "No download URL — this is a built-in demo entry. Install from URL tab.", ok: false })}
+                          onClick={() => p.url ? doInstallUrl(p.url) : doInstallBundled(p.id)}
                           disabled={installing === p.id}
                           style={{ background: "#61acff18", border: "1px solid #61acff55", color: "#61acff",
                             borderRadius: 4, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>

@@ -3,6 +3,10 @@ node_modules/
 dist/
 .vite/
 
+# Stray tsc output inside src (source of truth is .ts/.tsx)
+frontend/src/**/*.js
+frontend/src/**/*.js.map
+
 # Python
 __pycache__/
 *.py[cod]

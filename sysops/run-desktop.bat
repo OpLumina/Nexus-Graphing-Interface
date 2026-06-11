@@ -1,34 +1,75 @@
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0\.."
-echo === NexusGraph Desktop ===
+set "ROOT=%CD%"
 
-if not exist frontend\node_modules (
-    echo ERROR: frontend\node_modules not found. Run sysops\install.bat first.
+:: ── helpers ────────────────────────────────────────────────────────────────
+:: Show a MessageBox error dialog then jump to a label.
+:: Usage: call :msgbox "Text" && goto <label>
+:: (We define this as a subroutine at the bottom)
+
+:: ── pre-flight ─────────────────────────────────────────────────────────────
+if not exist "frontend\node_modules" (
+    call :msgbox "Dependencies not found.^n^nRun sysops\install.bat first."
     exit /b 1
 )
 
-echo.
-echo [1/4] Starting backend (Docker)...
-docker compose up backend -d
-if %errorlevel% neq 0 ( echo ERROR: Docker backend failed to start & exit /b 1 )
+:: Check Docker daemon is reachable before touching anything
+docker info >nul 2>&1
+if %errorlevel% neq 0 (
+    call :msgbox "Failed to connect to the Docker API.^n^nEnsure Docker Desktop is running and try again."
+    exit /b 1
+)
 
-echo.
-echo [2/4] Starting frontend dev server...
-start "NexusGraph-Frontend" cmd /c "cd frontend && npm run dev"
+:: ── backend ────────────────────────────────────────────────────────────────
+docker compose up backend -d >nul 2>&1
+if %errorlevel% neq 0 (
+    call :msgbox "Backend container failed to start.^n^nCheck Docker Desktop for details."
+    goto :cleanup_docker_only
+)
 
-echo.
-echo [3/4] Waiting for frontend dev server to be ready...
-timeout /t 5 /nobreak > nul
+:: ── frontend dev server (hidden — no terminal window) ──────────────────────
+set "PIDFILE=%TEMP%\nexusgraph_vite.pid"
+set "FRONTEND=%ROOT%\frontend"
+powershell -NoProfile -Command "& { $p = Start-Process 'cmd.exe' -ArgumentList '/c npm run dev' -WorkingDirectory $env:FRONTEND -WindowStyle Hidden -PassThru; $p.Id | Set-Content -Path $env:PIDFILE -Encoding ASCII }"
 
-echo.
-echo [4/4] Compiling and launching Electron...
-call frontend\node_modules\.bin\tsc -p tsconfig.electron.json
-if %errorlevel% neq 0 ( echo ERROR: TypeScript compile failed & goto cleanup )
+:: Wait for Vite to be ready
+timeout /t 5 /nobreak >nul
 
-call frontend\node_modules\.bin\electron app\dist\main.js
+:: ── compile Electron TypeScript ────────────────────────────────────────────
+set "TSCLOG=%TEMP%\nexusgraph_tsc.log"
+call "frontend\node_modules\.bin\tsc" -p tsconfig.electron.json > "%TSCLOG%" 2>&1
+if %errorlevel% neq 0 (
+    call :msgbox "TypeScript compile failed.^n^nLog: %TSCLOG%"
+    goto :cleanup
+)
 
+:: ── launch Electron (blocks until window is closed) ───────────────────────
+call "frontend\node_modules\.bin\electron" app\dist\main.js
+
+:: ── cleanup ────────────────────────────────────────────────────────────────
 :cleanup
-echo.
-echo Shutting down...
-taskkill /fi "windowtitle eq NexusGraph-Frontend" /f /t > nul 2>&1
-docker compose down
+if exist "%PIDFILE%" (
+    set /p VITE_PID=<"%PIDFILE%"
+    if defined VITE_PID (
+        taskkill /pid !VITE_PID! /f /t >nul 2>&1
+    )
+    del "%PIDFILE%" >nul 2>&1
+)
+
+:cleanup_docker_only
+docker compose down >nul 2>&1
+goto :eof
+
+:: ── subroutine: show a MessageBox error dialog ─────────────────────────────
+:msgbox
+set "MSGBOX_TEXT=%~1"
+powershell -NoProfile -Command ^
+  "Add-Type -AssemblyName System.Windows.Forms; ^
+   [void][System.Windows.Forms.MessageBox]::Show( ^
+     $env:MSGBOX_TEXT, ^
+     'NexusGraph', ^
+     [System.Windows.Forms.MessageBoxButtons]::OK, ^
+     [System.Windows.Forms.MessageBoxIcon]::Error ^
+   )"
+goto :eof

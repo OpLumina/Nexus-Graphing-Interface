@@ -17,9 +17,15 @@ declare global {
       listSaves: () => Promise<{ name: string; mtime: number }[]>;
       quickSave: (content: string) => Promise<string | null>;
       loadSave: (name: string) => Promise<string>;
+      minimizeWindow: () => void;
+      maximizeWindow: () => void;
+      closeWindow: () => void;
     };
   }
 }
+
+const DRAG: React.CSSProperties    = { WebkitAppRegion: "drag" }    as React.CSSProperties;
+const NO_DRAG: React.CSSProperties = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 function loadProjectIntoStore(content: string) {
   const data = deserialise(content);
@@ -117,7 +123,7 @@ export function Layout() {
         position: "absolute", top: 0, left: 0, right: 0, height: 36, zIndex: 10,
         display: "flex", alignItems: "center", gap: 8, padding: "0 12px",
         background: "rgba(18,18,18,0.9)", borderBottom: "1px solid rgba(255,255,255,0.06)",
-        backdropFilter: "blur(4px)",
+        backdropFilter: "blur(4px)", ...DRAG,
       }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: "0.1em" }}>
           NEXUSGRAPH
@@ -127,7 +133,8 @@ export function Layout() {
         <TopBtn label="Library" onClick={() => setLibraryOpen(v => !v)} />
         <TopBtn label="Save"    onClick={handleSave} />
         <TopBtn label="Plugins" onClick={() => setMarketplaceOpen(true)} />
-        <TopBtn label="⌘⇧P"    onClick={() => setPaletteOpen(true)} />
+        <TopBtn label="Menu" onClick={() => setPaletteOpen(true)} minWidth={46} />
+        {window.electronAPI && <WinControls />}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", paddingTop: 36 }}>
@@ -149,14 +156,57 @@ export function Layout() {
   );
 }
 
-function TopBtn({ label, onClick }: { label: string; onClick: () => void }) {
+function TopBtn({ label, onClick, minWidth }: { label: string; onClick: () => void; minWidth?: number }) {
   return (
     <button
       onClick={onClick}
       style={{
         background: "none", border: "1px solid rgba(255,255,255,0.12)",
         color: "rgba(255,255,255,0.5)", padding: "2px 10px", borderRadius: 4,
-        fontSize: 11, cursor: "pointer",
+        fontSize: 11, cursor: "pointer", minWidth: minWidth ?? "auto",
+        textAlign: "center", whiteSpace: "nowrap",
+        ...NO_DRAG,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function WinControls() {
+  const btn = (label: string, color: string, hoverColor: string, onClick: () => void) => (
+    <WinCtrlBtn key={label} label={label} color={color} hoverColor={hoverColor} onClick={onClick} />
+  );
+  return (
+    <div style={{ display: "flex", gap: 6, marginLeft: 8, alignItems: "center" }}>
+      <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.1)", marginRight: 2 }} />
+      {btn("─", "rgba(255,255,255,0.35)", "#fbbf24", () => window.electronAPI?.minimizeWindow())}
+      {btn("⛶", "rgba(255,255,255,0.35)", "#34d399", () => window.electronAPI?.maximizeWindow())}
+      {btn("✕", "rgba(255,255,255,0.35)", "#f87171", () => window.electronAPI?.closeWindow())}
+    </div>
+  );
+}
+
+function WinCtrlBtn({ label, color, hoverColor, onClick }: {
+  label: string; color: string; hoverColor: string; onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered ? "rgba(255,255,255,0.08)" : "none",
+        border: "none",
+        color: hovered ? hoverColor : color,
+        width: 28, height: 22, borderRadius: 4,
+        fontSize: label === "✕" ? 11 : 13,
+        cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "color 0.1s, background 0.1s",
+        padding: 0,
+        lineHeight: 1, ...NO_DRAG,
       }}
     >
       {label}

@@ -77,17 +77,43 @@ Every expression row has a **≡** toggle that opens output panels. Available to
 
 ---
 
+## Function palette
+
+The **FUNCTIONS** bar at the bottom of the window inserts any built-in at the cursor: full trig (`sin` … `arccot`, `atan2`), hyperbolics and their inverses (`sinh` … `coth`, `arctanh`), roots (`sqrt`, `cbrt`, `nthroot(x, n)`), logs (`ln`, `log`, `log2`, `logb(x, b)`), rounding (`floor`, `ceil`, `round`, `trunc`, `frac`), discrete math (`factorial`, `gamma`, `ncr`, `npr`, `gcd`, `lcm`), and utilities (`mod`, `clamp`, `hypot`, `sinc`, `step`, `deg`, `rad`). All of these also parse directly in expressions, e.g. `y = nthroot(x, 5)` or `f(x) = arctan(x) * gamma(x)`.
+
+---
+
 ## Plugin Marketplace
 
-Click **Plugins** in the top bar to browse, install, and manage plugins.
+Click **Plugins** in the top bar to browse, install, and manage plugins. Everything is free.
 
 Plugins are single `.ngplugin.json` files — no build step, no server deploy required for pure-JS tools.
 
+### Bundled plugin pack (works offline)
+
+The **Browse** tab lists a plugin pack that ships with the app — installing copies the manifest into local storage, no network needed:
+
+| Plugin | What it adds |
+|---|---|
+| Arc Length | ∫√(1 + f′²) dx on [a, b] |
+| Average Value | Mean value of f on [a, b] + overlay line |
+| Curvature | κ, radius, osculating circle center at a point |
+| Custom Value Table | f(x) tabulated over any range/step |
+| Euler's Method | Step y′ = f(x) from an initial condition |
+| Extrema Finder | Local min/max in the visible viewport |
+| Fourier Series | aₙ/bₙ coefficients + LaTeX partial sum |
+| Function Statistics | mean, std dev, min, max, RMS of f on [a, b] |
+| Inverse Solver | All x in view with f(x) = c |
+| Riemann Sums | Left/right/midpoint/trapezoid comparison |
+| Root Finder (Newton) | Newton's method from a guess |
+| Secant Line | Average rate of change + overlay |
+| Tangent & Normal | Tangent and normal lines at x₀ |
+
 ### Installing a plugin
 
-1. Click **Plugins** → **Import**
-2. Paste a URL to a `.ngplugin.json` or drop a local file
-3. Reload the page — plugin tools appear automatically on applicable expressions
+1. Click **Plugins** → **Browse** and hit **Install** (bundled pack, offline), or **Import** to paste a URL / drop a `.ngplugin.json` file
+2. Reload the page — plugin tools appear automatically on applicable expressions
+3. **Installed** tab: **Disable**/**Enable** toggles a plugin without uninstalling; **Remove** deletes it
 
 ### Writing a plugin
 

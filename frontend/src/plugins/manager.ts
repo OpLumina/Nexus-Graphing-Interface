@@ -1,5 +1,6 @@
 import type { PluginManifest, InstalledPlugin, MarketplaceRegistry } from "./types";
 import type { ToolDefinition } from "../tools/types";
+import { BUNDLED_PLUGINS, getBundledManifest } from "./bundled";
 
 const STORAGE_KEY = "nexus.plugins";
 
@@ -92,60 +93,30 @@ export function setRegistryUrl(url: string): void {
 
 export const BUILTIN_REGISTRY_URL = "";
 
+// Local registry built from the plugin pack bundled with the app.
+// No network needed — install copies the manifest straight into localStorage.
 export const BUILTIN_REGISTRY: MarketplaceRegistry = {
   version: 1,
-  updated: "2026-06-08",
-  plugins: [
-    {
-      id: "nexus.fourier",
-      name: "Fourier Series",
-      version: "1.0.0",
-      author: "NexusGraph",
-      description: "Compute Fourier series coefficients and partial sums for periodic functions",
-      tags: ["calculus", "series", "signal processing"],
-      url: "",
-      requiresBackend: false,
-      downloads: 0,
-      updatedAt: "2026-06-08",
-    },
-    {
-      id: "nexus.complex",
-      name: "Complex Analysis",
-      version: "1.0.0",
-      author: "NexusGraph",
-      description: "Visualize complex functions with domain coloring and Nyquist plots",
-      tags: ["complex", "visualization"],
-      url: "",
-      requiresBackend: false,
-      downloads: 0,
-      updatedAt: "2026-06-08",
-    },
-    {
-      id: "nexus.ode",
-      name: "ODE Solver",
-      version: "1.0.0",
-      author: "NexusGraph",
-      description: "Direction fields and solution curves for first-order ODEs",
-      tags: ["differential equations", "dynamics"],
-      url: "",
-      requiresBackend: false,
-      downloads: 0,
-      updatedAt: "2026-06-08",
-    },
-    {
-      id: "nexus.statistics",
-      name: "Descriptive Statistics",
-      version: "1.0.0",
-      author: "NexusGraph",
-      description: "Mean, variance, std dev, skewness, kurtosis for data entered as expressions",
-      tags: ["statistics", "data"],
-      url: "",
-      requiresBackend: false,
-      downloads: 0,
-      updatedAt: "2026-06-08",
-    },
-  ],
+  updated: "2026-06-10",
+  plugins: BUNDLED_PLUGINS.map(m => ({
+    id: m.id,
+    name: m.name,
+    version: m.version,
+    author: m.author,
+    description: m.description,
+    tags: m.tags ?? [],
+    url: "",                       // empty url = bundled, installed locally
+    requiresBackend: m.requiresBackend ?? false,
+  })),
 };
+
+/** Install a plugin that ships with the app (no fetch). */
+export function installBundled(id: string): { ok: boolean; error?: string; name?: string } {
+  const manifest = getBundledManifest(id);
+  if (!manifest) return { ok: false, error: `No bundled plugin with id "${id}"` };
+  const result = installPlugin(manifest, "marketplace");
+  return result.ok ? { ok: true, name: manifest.name } : result;
+}
 
 export async function fetchRegistry(): Promise<MarketplaceRegistry> {
   const url = getRegistryUrl();

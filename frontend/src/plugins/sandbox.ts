@@ -57,7 +57,6 @@ export async function runSandboxed(
     // "use strict" prevents access to the outer `this`.
     // Shadow browser globals so plugin code cannot escape to DOM/network.
     // "use strict" removes implicit `this`; shadowed params override the outer scope.
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const factory = new Function(
       "inputs", "ctx", "Math", "utils",
       "globalThis", "window", "document", "self", "location", "fetch", "XMLHttpRequest",

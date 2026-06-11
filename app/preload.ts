@@ -18,4 +18,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   loadSave: (name: string): Promise<string> =>
     ipcRenderer.invoke("file:load-save", name),
+
+  minimizeWindow: (): void => ipcRenderer.send("window:minimize"),
+  maximizeWindow: (): void => ipcRenderer.send("window:maximize"),
+  closeWindow:    (): void => ipcRenderer.send("window:close"),
 });
