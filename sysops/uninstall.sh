@@ -7,7 +7,12 @@ echo "=== NexusGraph Uninstall ==="
 echo ""
 echo "Removing frontend dependencies..."
 if [ -d frontend/node_modules ]; then
-    rm -rf frontend/node_modules
+    SANDBOX="frontend/node_modules/electron/dist/chrome-sandbox"
+    if [ -f "$SANDBOX" ] && [ "$(stat -c '%u' "$SANDBOX" 2>/dev/null)" = "0" ]; then
+      sudo rm -rf frontend/node_modules
+    else
+      rm -rf frontend/node_modules
+    fi
     echo "Removed frontend/node_modules"
 else
     echo "frontend/node_modules not found, skipping"
