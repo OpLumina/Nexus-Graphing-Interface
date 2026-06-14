@@ -1,6 +1,7 @@
 import numpy as np
 import sympy as sp
 from scipy import optimize
+
 from .parse_utils import parse_expr_safe as _parse
 
 

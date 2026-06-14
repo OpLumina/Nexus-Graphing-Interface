@@ -243,10 +243,12 @@ export function sampleExpression(
       }
 
       if (param === "t") {
+        // Treat t as the horizontal axis and sample across the visible x-range
+        // so the curve re-samples on pan/zoom instead of staying pinned to a
+        // fixed [0, 2π] window and sliding off-screen (BUG-4).
         const points = sampleCartesian(
           (t) => evaluate(body, { ...baseEnv, t }, userFns),
-          { ...viewport, xMin: 0, xMax: 2 * Math.PI },
-          600, constraints, baseEnv, userFns,
+          viewport, 600, constraints, baseEnv, userFns,
         );
         return { points, kind: "cartesian" };
       }

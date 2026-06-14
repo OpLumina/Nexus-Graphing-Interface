@@ -5,8 +5,10 @@ echo === NexusGraph Install ===
 echo.
 echo Installing all dependencies...
 cd frontend
-call npm install
-if %errorlevel% neq 0 ( echo ERROR: npm install failed & exit /b 1 )
+rem npm ci installs exactly what's in package-lock.json (reproducible, no silent
+rem version drift) and fails fast if package.json and the lockfile disagree (ENV-5).
+call npm ci
+if %errorlevel% neq 0 ( echo ERROR: npm ci failed & exit /b 1 )
 cd ..
 
 echo.

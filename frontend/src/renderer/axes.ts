@@ -29,7 +29,13 @@ export function drawAxes(
   opts: AxesOptions = {},
 ): void {
   const { gridColor, axisColor, labelColor, fontSize } = { ...DEFAULTS, ...opts };
-  const { width: W, height: H } = ctx.canvas;
+  // Derive logical (CSS-pixel) dimensions from the active transform scale so the
+  // axes stay consistent whether or not the caller applied a DPR transform
+  // (BUG-5). With a `dpr` scale set, ctx.canvas.width === W * dpr, so dividing
+  // back out gives CSS pixels; clearRect(0,0,W,H) still clears the full canvas.
+  const tf = ctx.getTransform();
+  const W = ctx.canvas.width  / (tf.a || 1);
+  const H = ctx.canvas.height / (tf.d || 1);
   const { xMin, xMax, yMin, yMax } = viewport;
   const mathW = viewportWidth(viewport);
   const mathH = viewportHeight(viewport);

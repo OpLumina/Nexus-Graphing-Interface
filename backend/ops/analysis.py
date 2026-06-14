@@ -1,5 +1,5 @@
 import sympy as sp
-import numpy as np
+
 from .parse_utils import parse_expr_safe as _parse
 
 

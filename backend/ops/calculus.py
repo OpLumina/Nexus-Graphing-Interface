@@ -1,5 +1,5 @@
 import sympy as sp
-import numpy as np
+
 from .parse_utils import parse_expr_safe as _parse
 
 
@@ -22,7 +22,7 @@ def taylor_series(inputs: dict) -> dict:
     expr_str = inputs.get("expr", "")
     var      = inputs.get("var", "x")
     a        = inputs.get("a", 0)
-    n        = int(inputs.get("n", 5))
+    n        = max(0, min(int(inputs.get("n", 5)), 50))  # cap series order to bound cost (SEC-3)
 
     expr, x = _parse(expr_str, var)
     series  = sp.series(expr, x, a, n + 1).removeO()
@@ -66,7 +66,7 @@ def definite_integral(inputs: dict) -> dict:
 def symbolic_derivative(inputs: dict) -> dict:
     expr_str = inputs.get("expr", "")
     var      = inputs.get("var", "x")
-    order    = int(inputs.get("order", 1))
+    order    = max(0, min(int(inputs.get("order", 1)), 50))  # cap to bound cost (SEC-3)
 
     expr, x = _parse(expr_str, var)
     deriv   = sp.diff(expr, x, order)

@@ -7,7 +7,9 @@ echo "=== NexusGraph Install ==="
 echo ""
 echo "Installing all dependencies..."
 cd frontend
-npm install
+# npm ci installs exactly what's in package-lock.json (reproducible, no silent
+# version drift) and fails fast if package.json and the lockfile disagree (ENV-5).
+npm ci
 cd ..
 
 echo ""

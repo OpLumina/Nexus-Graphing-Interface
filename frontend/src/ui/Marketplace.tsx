@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  fetchRegistry, fetchAndInstallPlugin, installFromFile, installBundled,
+  getRegistry, parsePluginFile, installPlugin, getBundledManifest,
   loadInstalledPlugins, uninstallPlugin, setPluginEnabled,
-  getRegistryUrl, setRegistryUrl,
 } from "../plugins/manager";
-import type { MarketplaceEntry, InstalledPlugin } from "../plugins/types";
+import type { MarketplaceEntry, InstalledPlugin, PluginManifest } from "../plugins/types";
 
 interface Props { onClose: () => void }
 
 type Tab = "browse" | "installed" | "import";
+
+// A parsed-but-not-yet-installed plugin awaiting the user's consent.
+interface Pending {
+  manifest: PluginManifest;
+  source: InstalledPlugin["source"];
+}
 
 const TAG_COLORS: Record<string, string> = {
   calculus: "#61acff", series: "#6be08e", "signal processing": "#cc73ff",
@@ -35,14 +40,12 @@ export function Marketplace({ onClose }: Props) {
   const [registry, setRegistry]     = useState<MarketplaceEntry[]>([]);
   const [installed, setInstalled]   = useState<InstalledPlugin[]>([]);
   const [search, setSearch]         = useState("");
-  const [installing, setInstalling] = useState<string | null>(null);
   const [status, setStatus]         = useState<{ id: string; msg: string; ok: boolean } | null>(null);
-  const [urlInput, setUrlInput]     = useState("");
-  const [regInput, setRegInput]     = useState(getRegistryUrl());
+  const [pending, setPending]       = useState<Pending | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchRegistry().then(r => setRegistry(r.plugins));
+    setRegistry(getRegistry().plugins);
     setInstalled(loadInstalledPlugins());
   }, []);
 
@@ -50,38 +53,37 @@ export function Marketplace({ onClose }: Props) {
 
   const isInstalled = (id: string) => installed.some(p => p.manifest.id === id);
 
-  const doInstallBundled = (id: string) => {
-    setInstalling(id);
-    const res = installBundled(id);
-    setStatus({ id, msg: res.ok ? `Installed "${res.name}" — reload to activate` : (res.error ?? "Failed"), ok: res.ok });
-    refresh();
-    setInstalling(null);
+  // Stage a plugin for the consent dialog rather than installing immediately.
+  const requestInstallBundled = (id: string) => {
+    const manifest = getBundledManifest(id);
+    if (!manifest) { setStatus({ id, msg: "Bundled plugin not found", ok: false }); return; }
+    setPending({ manifest, source: "marketplace" });
   };
 
-  const doInstallUrl = async (url: string) => {
-    if (!url.trim()) return;
-    setInstalling(url);
-    const res = await fetchAndInstallPlugin(url.trim());
-    setStatus({ id: url, msg: res.ok ? `Installed "${res.name}" — restart to activate` : (res.error ?? "Failed"), ok: res.ok ?? false });
-    refresh();
-    setInstalling(null);
+  const requestInstallFile = async (file: File) => {
+    const res = await parsePluginFile(file);
+    if (!res.ok || !res.manifest) {
+      setStatus({ id: file.name, msg: res.error ?? "Invalid plugin file", ok: false });
+      return;
+    }
+    setPending({ manifest: res.manifest, source: "file" });
   };
 
-  const doInstallFile = async (file: File) => {
-    const res = await installFromFile(file);
-    setStatus({ id: file.name, msg: res.ok ? `Installed "${res.name}" — restart to activate` : (res.error ?? "Failed"), ok: res.ok ?? false });
+  // Only runs after the user confirms the warning.
+  const confirmInstall = () => {
+    if (!pending) return;
+    const res = installPlugin(pending.manifest, pending.source);
+    setStatus({
+      id: pending.manifest.id,
+      msg: res.ok ? `Installed "${pending.manifest.name}" — reload to activate` : (res.error ?? "Failed"),
+      ok: res.ok,
+    });
     refresh();
+    setPending(null);
   };
 
-  const doUninstall = (id: string) => {
-    uninstallPlugin(id);
-    refresh();
-  };
-
-  const doToggle = (id: string, enabled: boolean) => {
-    setPluginEnabled(id, enabled);
-    refresh();
-  };
+  const doUninstall = (id: string) => { uninstallPlugin(id); refresh(); };
+  const doToggle = (id: string, enabled: boolean) => { setPluginEnabled(id, enabled); refresh(); };
 
   const filtered = registry.filter(p =>
     !search ||
@@ -107,7 +109,7 @@ export function Marketplace({ onClose }: Props) {
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#e8e8e8" }}>Plugin Marketplace</div>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
-                Extend NexusGraph with community tools
+                Local tools only — bundled pack or a file you choose
               </div>
             </div>
             <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)",
@@ -187,11 +189,10 @@ export function Marketplace({ onClose }: Props) {
                         </span>
                       ) : (
                         <button
-                          onClick={() => p.url ? doInstallUrl(p.url) : doInstallBundled(p.id)}
-                          disabled={installing === p.id}
+                          onClick={() => requestInstallBundled(p.id)}
                           style={{ background: "#61acff18", border: "1px solid #61acff55", color: "#61acff",
                             borderRadius: 4, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>
-                          {installing === p.id ? "Installing…" : "Install"}
+                          Install
                         </button>
                       )}
                     </div>
@@ -205,7 +206,7 @@ export function Marketplace({ onClose }: Props) {
             <div>
               {installed.length === 0 ? (
                 <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 13, textAlign: "center", padding: 32 }}>
-                  No plugins installed. Browse the marketplace or import from a file.
+                  No plugins installed. Browse the bundled pack or import from a file.
                 </div>
               ) : installed.map(p => (
                 <div key={p.manifest.id} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 7,
@@ -247,24 +248,12 @@ export function Marketplace({ onClose }: Props) {
 
           {tab === "import" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
-                  Install from URL
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    value={urlInput}
-                    onChange={e => setUrlInput(e.target.value)}
-                    placeholder="https://example.com/my-plugin.ngplugin.json"
-                    style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: 5, color: "#e8e8e8", padding: "7px 10px", fontSize: 12, outline: "none" }}
-                  />
-                  <button onClick={() => doInstallUrl(urlInput)}
-                    style={{ background: "#61acff18", border: "1px solid #61acff55", color: "#61acff",
-                      borderRadius: 5, padding: "0 14px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>
-                    Install
-                  </button>
-                </div>
+              <div style={{ background: "rgba(255,201,53,0.08)", border: "1px solid rgba(255,201,53,0.3)",
+                borderRadius: 6, padding: 14, fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 1.6 }}>
+                <div style={{ color: "#ffc935", fontWeight: 600, marginBottom: 4 }}>⚠ Plugins run real code</div>
+                A plugin is executable JavaScript (and may add backend math ops). It runs with the
+                same privileges as NexusGraph. Only import files from sources you trust. NexusGraph
+                never downloads plugins — installs are local files you pick, and you confirm each one.
               </div>
 
               <div>
@@ -273,35 +262,12 @@ export function Marketplace({ onClose }: Props) {
                 </div>
                 <input ref={fileRef} type="file" accept=".json,.ngplugin.json"
                   style={{ display: "none" }}
-                  onChange={e => { if (e.target.files?.[0]) doInstallFile(e.target.files[0]); }} />
+                  onChange={e => { if (e.target.files?.[0]) void requestInstallFile(e.target.files[0]); e.target.value = ""; }} />
                 <button onClick={() => fileRef.current?.click()}
                   style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
                     color: "#e8e8e8", borderRadius: 5, padding: "8px 16px", fontSize: 12, cursor: "pointer" }}>
                   Choose .ngplugin.json file…
                 </button>
-              </div>
-
-              <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 16 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
-                  Registry URL <span style={{ color: "rgba(255,255,255,0.25)" }}>(advanced)</span>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    value={regInput}
-                    onChange={e => setRegInput(e.target.value)}
-                    placeholder="https://your-registry.com/registry.json"
-                    style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: 5, color: "#e8e8e8", padding: "7px 10px", fontSize: 12, outline: "none" }}
-                  />
-                  <button onClick={() => { setRegistryUrl(regInput); fetchRegistry().then(r => setRegistry(r.plugins)); }}
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)",
-                      color: "#e8e8e8", borderRadius: 5, padding: "0 14px", fontSize: 12, cursor: "pointer" }}>
-                    Save
-                  </button>
-                </div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginTop: 6 }}>
-                  Point to any hosted registry.json to use a custom or private plugin feed.
-                </div>
               </div>
 
               <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 6,
@@ -316,8 +282,80 @@ export function Marketplace({ onClose }: Props) {
 
         <div style={{ padding: "10px 20px", borderTop: "1px solid rgba(255,255,255,0.08)",
           fontSize: 11, color: "rgba(255,255,255,0.25)", display: "flex", justifyContent: "space-between" }}>
-          <span>Plugins take effect after reload  ·  NexusGraph Plugin API v1</span>
+          <span>Plugins take effect after reload  ·  Local-only  ·  Plugin API v1</span>
           <span>{installed.filter(p => p.enabled).length} active</span>
+        </div>
+      </div>
+
+      {pending && (
+        <ConsentDialog
+          pending={pending}
+          onCancel={() => setPending(null)}
+          onConfirm={confirmInstall}
+        />
+      )}
+    </div>
+  );
+}
+
+// Explicit consent gate shown before ANY plugin install (SEC-1/SEC-2). Lists
+// what code will run so the user makes an informed choice.
+function ConsentDialog({ pending, onCancel, onConfirm }: {
+  pending: Pending; onCancel: () => void; onConfirm: () => void;
+}) {
+  const { manifest, source } = pending;
+  const inlineTools = manifest.tools.filter(t => t.operation?.type === "inline");
+  const backendTools = manifest.tools.filter(t => t.operation?.type === "backend");
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex",
+        alignItems: "center", justifyContent: "center", zIndex: 2100 }}
+      onClick={onCancel}
+    >
+      <div
+        style={{ background: "#1e1e1e", borderRadius: 10, width: 460,
+          border: "1px solid rgba(255,201,53,0.4)", boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+          padding: 22 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 15, fontWeight: 600, color: "#ffc935", marginBottom: 4 }}>
+          ⚠ Install “{manifest.name}”?
+        </div>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 14 }}>
+          This plugin runs executable code with the same privileges as NexusGraph.
+          Only continue if you trust <strong style={{ color: "#e8e8e8" }}>{manifest.author}</strong> and
+          this {source === "file" ? "file" : "bundled package"}.
+        </div>
+
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
+          v{manifest.version} · {manifest.tools.length} tool{manifest.tools.length !== 1 ? "s" : ""}
+        </div>
+        <ul style={{ margin: "0 0 14px", padding: "0 0 0 18px", fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
+          {inlineTools.length > 0 && (
+            <li><strong style={{ color: "#ff8c33" }}>{inlineTools.length}</strong> tool(s) run inline JavaScript in the app</li>
+          )}
+          {backendTools.length > 0 && (
+            <li><strong style={{ color: "#ffc935" }}>{backendTools.length}</strong> tool(s) call backend math ops</li>
+          )}
+          {manifest.tools.map(t => (
+            <li key={t.id} style={{ color: "rgba(255,255,255,0.45)" }}>
+              {t.label} <span style={{ color: "rgba(255,255,255,0.3)" }}>({t.operation?.type})</span>
+            </li>
+          ))}
+        </ul>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onCancel}
+            style={{ background: "none", border: "1px solid rgba(255,255,255,0.2)",
+              color: "rgba(255,255,255,0.6)", borderRadius: 5, padding: "6px 14px", fontSize: 12, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm}
+            style={{ background: "#ffc93522", border: "1px solid #ffc93577", color: "#ffc935",
+              borderRadius: 5, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+            Install &amp; trust
+          </button>
         </div>
       </div>
     </div>

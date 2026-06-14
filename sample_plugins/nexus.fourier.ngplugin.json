@@ -4,7 +4,11 @@
   "name": "Fourier Series",
   "author": "NexusGraph",
   "description": "Compute Fourier series coefficients and approximate a function with a partial sum",
-  "tags": ["calculus", "series", "signal processing"],
+  "tags": [
+    "calculus",
+    "series",
+    "signal processing"
+  ],
   "requiresBackend": false,
   "tools": [
     {
@@ -12,20 +16,98 @@
       "label": "Fourier Series",
       "description": "Compute aₙ and bₙ coefficients for a Fourier series expansion",
       "category": "calculus",
-      "appliesTo": ["function", "expression"],
+      "appliesTo": [
+        "function",
+        "expression"
+      ],
       "inputs": [
-        { "name": "n",  "type": "number", "label": "terms", "default": 5 },
-        { "name": "L",  "type": "number", "label": "period/2", "default": 3.14159 }
+        {
+          "name": "n",
+          "type": "number",
+          "label": "terms",
+          "default": 5
+        },
+        {
+          "name": "L",
+          "type": "number",
+          "label": "period/2",
+          "default": 3.14159
+        }
       ],
       "operation": {
         "type": "inline",
-        "js": "function run(inputs, ctx) {\n  const n = Math.max(1, Math.round(inputs.n ?? 5));\n  const L = inputs.L ?? Math.PI;\n  const N = 500;\n  const expr = ctx.expressions.find(e => e.id === ctx.exprId);\n  if (!expr) return { ok: false, error: 'No expression', data: {} };\n  // Numerically integrate using ctx.userFns\n  function evalAt(x) {\n    try {\n      const fns = ctx.userFns;\n      const env = { ...ctx.env, x };\n      // Evaluate by calling the expression's function if defined\n      const name = expr.parsed && expr.parsed.type === 'function' ? expr.parsed.name : null;\n      if (name && fns[name]) return fns[name]([x]);\n      return NaN;\n    } catch { return NaN; }\n  }\n  function integrate(fn, a, b, steps) {\n    const h = (b - a) / steps;\n    let s = 0;\n    for (let i = 0; i <= steps; i++) {\n      const x = a + i * h;\n      const w = (i === 0 || i === steps) ? 0.5 : 1;\n      const v = fn(x);\n      if (isFinite(v)) s += w * v * h;\n    }\n    return s;\n  }\n  const a0 = (1 / L) * integrate(x => evalAt(x), -L, L, N);\n  const coeffs = [];\n  let latex = `\\\\frac{${a0.toFixed(3)}}{2}`;\n  for (let k = 1; k <= n; k++) {\n    const ak = (1 / L) * integrate(x => evalAt(x) * Math.cos(k * Math.PI * x / L), -L, L, N);\n    const bk = (1 / L) * integrate(x => evalAt(x) * Math.sin(k * Math.PI * x / L), -L, L, N);\n    coeffs.push({ k, ak: parseFloat(ak.toFixed(4)), bk: parseFloat(bk.toFixed(4)) });\n    if (Math.abs(ak) > 1e-6) latex += ` + ${ak.toFixed(3)}\\\\cos\\\\!\\\\left(\\\\tfrac{${k}\\\\pi x}{L}\\\\right)`;\n    if (Math.abs(bk) > 1e-6) latex += ` + ${bk.toFixed(3)}\\\\sin\\\\!\\\\left(\\\\tfrac{${k}\\\\pi x}{L}\\\\right)`;\n  }\n  return {\n    ok: true,\n    data: {\n      a0: parseFloat(a0.toFixed(4)),\n      coefficients: coeffs,\n      latex,\n      n_terms: n,\n      period: 2 * L\n    }\n  };\n}"
+        "js": [
+          "function run(inputs, ctx) {",
+          "  const n = Math.max(1, Math.round(inputs.n ?? 5));",
+          "  const L = inputs.L ?? Math.PI;",
+          "  const N = 500;",
+          "  const expr = ctx.expressions.find(e => e.id === ctx.exprId);",
+          "  if (!expr) return { ok: false, error: 'No expression', data: {} };",
+          "  // Numerically integrate using ctx.userFns",
+          "  function evalAt(x) {",
+          "    try {",
+          "      const fns = ctx.userFns;",
+          "      const env = { ...ctx.env, x };",
+          "      // Evaluate by calling the expression's function if defined",
+          "      const name = expr.parsed && expr.parsed.type === 'function' ? expr.parsed.name : null;",
+          "      if (name && fns[name]) return fns[name]([x]);",
+          "      return NaN;",
+          "    } catch { return NaN; }",
+          "  }",
+          "  function integrate(fn, a, b, steps) {",
+          "    const h = (b - a) / steps;",
+          "    let s = 0;",
+          "    for (let i = 0; i <= steps; i++) {",
+          "      const x = a + i * h;",
+          "      const w = (i === 0 || i === steps) ? 0.5 : 1;",
+          "      const v = fn(x);",
+          "      if (isFinite(v)) s += w * v * h;",
+          "    }",
+          "    return s;",
+          "  }",
+          "  const a0 = (1 / L) * integrate(x => evalAt(x), -L, L, N);",
+          "  const coeffs = [];",
+          "  let latex = `\\\\frac{${a0.toFixed(3)}}{2}`;",
+          "  for (let k = 1; k <= n; k++) {",
+          "    const ak = (1 / L) * integrate(x => evalAt(x) * Math.cos(k * Math.PI * x / L), -L, L, N);",
+          "    const bk = (1 / L) * integrate(x => evalAt(x) * Math.sin(k * Math.PI * x / L), -L, L, N);",
+          "    coeffs.push({ k, ak: parseFloat(ak.toFixed(4)), bk: parseFloat(bk.toFixed(4)) });",
+          "    if (Math.abs(ak) > 1e-6) latex += ` + ${ak.toFixed(3)}\\\\cos\\\\!\\\\left(\\\\tfrac{${k}\\\\pi x}{L}\\\\right)`;",
+          "    if (Math.abs(bk) > 1e-6) latex += ` + ${bk.toFixed(3)}\\\\sin\\\\!\\\\left(\\\\tfrac{${k}\\\\pi x}{L}\\\\right)`;",
+          "  }",
+          "  return {",
+          "    ok: true,",
+          "    data: {",
+          "      a0: parseFloat(a0.toFixed(4)),",
+          "      coefficients: coeffs,",
+          "      latex,",
+          "      n_terms: n,",
+          "      period: 2 * L",
+          "    }",
+          "  };",
+          "}"
+        ],
+        "integrity": "sha256-Mc5o972myA0hy0Nk8Y9gBW8y4JzI7x7n3h3hcsp33ho="
       },
       "outputs": {
         "panel": [
-          { "type": "latex",  "label": "f(x) ≈", "value": "result.latex", "displayMode": true },
-          { "type": "value",  "label": "a₀",     "value": "result.a0",   "precision": 5 },
-          { "type": "value",  "label": "period",  "value": "result.period" }
+          {
+            "type": "latex",
+            "label": "f(x) ≈",
+            "value": "result.latex",
+            "displayMode": true
+          },
+          {
+            "type": "value",
+            "label": "a₀",
+            "value": "result.a0",
+            "precision": 5
+          },
+          {
+            "type": "value",
+            "label": "period",
+            "value": "result.period"
+          }
         ]
       },
       "docs": "Computes Fourier coefficients numerically using Simpson's rule integration over [-L, L]."

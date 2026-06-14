@@ -21,6 +21,12 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: ── shared API token (SEC-5) ───────────────────────────────────────────────
+:: Per-session token exported to both the backend (via docker compose) and the
+:: Vite proxy (it inherits this env), so /compute only answers calls carrying a
+:: matching X-Nexus-Token header — no other local process can reach it.
+for /f %%i in ('powershell -NoProfile -Command "[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')"') do set "NEXUS_API_TOKEN=%%i"
+
 :: ── backend ────────────────────────────────────────────────────────────────
 docker compose up backend -d >nul 2>&1
 if %errorlevel% neq 0 (

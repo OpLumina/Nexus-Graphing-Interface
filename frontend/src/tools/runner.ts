@@ -107,9 +107,10 @@ export async function runTool(
     } else {
       const resolvedArgs: Record<string, unknown> = {};
       for (const [k, pathOrVal] of Object.entries(def.operation.args ?? {})) {
-        resolvedArgs[k] = typeof pathOrVal === "string" && pathOrVal.includes(".")
-          ? resolve(pathOrVal, scope)
-          : pathOrVal;
+        // Only treat strings rooted at a known scope (inputs/result/ctx) as
+        // resolve-paths; a literal decimal default like "1.5" stays a value.
+        const isPath = typeof pathOrVal === "string" && /^(inputs|result|ctx)\./.test(pathOrVal);
+        resolvedArgs[k] = isPath ? resolve(pathOrVal, scope) : pathOrVal;
       }
       const res = await compute(def.operation.op, resolvedArgs);
       if (!res.ok) return { ok: false, error: res.error, data: {} };

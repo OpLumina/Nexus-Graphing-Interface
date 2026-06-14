@@ -67,6 +67,29 @@ describe("evaluate — higher-order derivatives use correct paramVar", () => {
     // g''(2) = 12; old buggy code returned 0 (used k not t as paramVar)
     expect(result).toBeCloseTo(12, 0);
   });
+
+  it("f''(2) with a literal argument returns ~2, not 0", () => {
+    const userFns = { f: (args: number[]) => args[0] ** 2 };
+    // Literal arg: old code re-read the unperturbed literal and returned 0.
+    const node = call("__prime____prime__f", [num(2)]);
+    expect(evaluate(node, {}, userFns)).toBeCloseTo(2, 1);
+  });
+
+  it("g''(2t) with a compound argument evaluates at the point 2t", () => {
+    const userFns = { g: (args: number[]) => args[0] ** 3 }; // g''(u) = 6u
+    const node = call("__prime____prime__g", [binop("*", num(2), vari("t"))]);
+    // at t=3, argument = 6, g''(6) = 36
+    expect(evaluate(node, { t: 3 }, userFns)).toBeCloseTo(36, -1);
+  });
+});
+
+describe("evaluate — recursion backstop", () => {
+  it("self-referential f(x)=f(x) returns NaN instead of overflowing the stack", () => {
+    const userFns: Record<string, (a: number[]) => number> = {};
+    userFns.f = (args: number[]) => evaluate(call("f", [num(args[0])]), {}, userFns);
+    expect(() => evaluate(call("f", [num(1)]), {}, userFns)).not.toThrow();
+    expect(evaluate(call("f", [num(1)]), {}, userFns)).toBeNaN();
+  });
 });
 
 describe("evaluate — variables and unknown names", () => {

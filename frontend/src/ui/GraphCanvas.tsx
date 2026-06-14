@@ -1,12 +1,12 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useStore } from "../store";
 import { initGL, resizeToDisplaySize } from "../renderer/canvas";
-import { CurveRenderer, colorForIndex } from "../renderer/curves";
+import { CurveRenderer } from "../renderer/curves";
 import { drawAxes } from "../renderer/axes";
 import { sampleWithLists } from "../engine/sampler";
 import { evaluate } from "../engine/evaluator";
 import { panByPixels, zoomAtPixel, pixelToMath, fitAspect } from "../renderer/viewport";
-import { sampleLine, hexToRgb } from "../renderer/overlays";
+import { sampleLine, hexToRgb, parseColor } from "../renderer/overlays";
 import { nearestPointOnCurves } from "../renderer/hittest";
 import type { OverlayLine } from "../renderer/overlays";
 
@@ -85,14 +85,20 @@ export function GraphCanvas() {
     axisCanvas.width  = glCanvas.width;
     axisCanvas.height = glCanvas.height;
 
+    // The backing store is device pixels (clientSize × dpr); scale the 2D
+    // context by dpr so all axis/shading drawing happens in CSS-pixel space.
+    // This keeps line widths and label fonts correctly sized on HiDPI and keeps
+    // the grid and inequality shading in one consistent coordinate space (BUG-5).
+    const dpr = window.devicePixelRatio || 1;
     const ctx2d = axisCanvas.getContext("2d")!;
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawAxes(ctx2d, viewport);
 
     {
       const store2   = useStore.getState();
       const env2     = store2.getEnv();
       const userFns2 = store2.getUserFns();
-      const W = axisCanvas.width, H = axisCanvas.height;
+      const W = axisCanvas.width / dpr, H = axisCanvas.height / dpr;
       const xRange = viewport.xMax - viewport.xMin;
       const yRange = viewport.yMax - viewport.yMin;
       const COLS = 60, ROWS = 60;
@@ -135,20 +141,17 @@ export function GraphCanvas() {
     const newCache = new Map<string, Float32Array>();
     const ALPHAS = [1.0, 0.72, 0.5, 0.35, 0.25];
 
-    let colorIndex = 0;
     for (const expr of expressions) {
-      if (!expr.visible) { colorIndex++; continue; }
+      if (!expr.visible) continue;
 
       const curves = sampleWithLists(expr.parsed, env, viewport, userFns, listAssignments);
-      const [r, g, b] = colorForIndex(colorIndex);
+      const [r, g, b] = hexToRgb(expr.color);
 
       curves.forEach((curve, ci) => {
         const alpha = ALPHAS[Math.min(ci, ALPHAS.length - 1)];
         renderer.drawCurve(curve.points, viewport, { color: [r, g, b], lineWidth: 2.5, alpha });
         if (ci === 0) newCache.set(expr.id, curve.points);
       });
-
-      colorIndex++;
     }
 
     sampledCachRef.current = newCache;
@@ -159,8 +162,8 @@ export function GraphCanvas() {
     for (const overlay of allOverlays) {
       if (!isFinite(overlay.slope) || !isFinite(overlay.y0)) continue;
       const pts = sampleLine(overlay.x0, overlay.y0, overlay.slope, viewport);
-      const [r, g, b] = hexToRgb(overlay.color);
-      renderer.drawCurve(pts, viewport, { color: [r, g, b], lineWidth: 1.5 });
+      const { rgb, alpha } = parseColor(overlay.color);
+      renderer.drawCurve(pts, viewport, { color: rgb, lineWidth: 1.5, alpha });
     }
   }, [viewport, expressions, sliders, toolResults]);
 
@@ -190,8 +193,12 @@ export function GraphCanvas() {
     const py = e.clientY - rect.top;
     const [mx, my] = pixelToMath(px, py, viewport, canvas.clientWidth, canvas.clientHeight);
 
-    const tol = (viewport.xMax - viewport.xMin) * 0.02;
-    const hit = nearestPointOnCurves(mx, my, sampledCachRef.current, tol);
+    // BUG-10: pick by on-screen distance — scale each axis by its own
+    // pixels-per-math-unit so anisotropic viewports hit-test correctly.
+    const scaleX = canvas.clientWidth / (viewport.xMax - viewport.xMin);
+    const scaleY = canvas.clientHeight / (viewport.yMax - viewport.yMin);
+    const TOLERANCE_PX = 12;
+    const hit = nearestPointOnCurves(mx, my, sampledCachRef.current, scaleX, scaleY, TOLERANCE_PX);
     if (hit) {
       const expr = useStore.getState().expressions.find(ex => ex.id === hit.exprId);
       setInspectPoint({

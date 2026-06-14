@@ -1,4 +1,5 @@
 import sympy as sp
+
 from .parse_utils import parse_expr_safe as _parse
 
 
@@ -35,5 +36,9 @@ def integral(inputs: dict) -> dict:
 def limit(inputs: dict) -> dict:
     expr, x = _parse(inputs.get("expr", ""), inputs.get("var", "x"))
     point     = float(inputs.get("point", 0))
-    direction = inputs.get("direction", "+")
+    direction = str(inputs.get("direction", "+")).strip()
+    # SymPy's `dir` accepts only '+', '-', '+-'. Map the documented two-sided
+    # aliases so a user typing `±` doesn't trigger a ValueError.
+    if direction in ("±", "+-", "+/-", "both", "two-sided", ""):
+        direction = "+-"
     return _sym(sp.limit(expr, x, point, direction))

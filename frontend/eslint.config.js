@@ -50,12 +50,21 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       // TS already checks undefined identifiers; the core rule false-positives on TS types
       "no-undef": "off",
+      // BP-2: re-enabled as an error. Underscore-prefixed names are the opt-out
+      // (args, locals, and caught errors) so intentional placeholders stay legal.
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/no-explicit-any": "warn",
-      // crashes under eslint 9.39 with @typescript-eslint 8.5 (options default bug)
+      // BP-2: re-enabled. The earlier crash (eslint 9.39 + @typescript-eslint 8.5
+      // options-default bug) is avoided by passing the options object explicitly.
       "no-unused-expressions": "off",
-      "@typescript-eslint/no-unused-expressions": "off",
+      "@typescript-eslint/no-unused-expressions": [
+        "error",
+        { allowShortCircuit: true, allowTernary: true, allowTaggedTemplates: true },
+      ],
     },
   },
 ];

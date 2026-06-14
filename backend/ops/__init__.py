@@ -1,9 +1,12 @@
-from .calculus    import numeric_derivative, symbolic_derivative, taylor_series, definite_integral
-from .geometry    import reflect_vector
-from .algebra     import solve, factor, expand, simplify, integral, limit
-from .stats       import sample, regression
-from .analysis    import analyze_function
-import sys as _sys, os as _os
+import os as _os
+import sys as _sys
+
+from .algebra import expand, factor, integral, limit, simplify, solve
+from .analysis import analyze_function
+from .calculus import definite_integral, numeric_derivative, symbolic_derivative, taylor_series
+from .geometry import reflect_vector
+from .stats import regression, sample
+
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from plugin_loader import load_plugin_ops
 

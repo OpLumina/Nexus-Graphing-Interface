@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { useStore } from "../../store";
 import { MathDisplay } from "../MathDisplay";
@@ -46,11 +46,17 @@ export function GenericPanel({ entry, def }: ToolPanelProps) {
     setLoading(false);
   };
 
-  const [autoRan, setAutoRan] = useState(false);
-  if (isAutoRun && !autoRan && !result) {
-    setAutoRan(true);
-    void doRun();
-  }
+  // Keyed on (tool, expression) so a reused panel auto-runs again for a new
+  // expression instead of being stuck behind a one-shot boolean (BUG-12).
+  const autoRanKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAutoRun) return;
+    const key = `${def.id}:${entry.id}`;
+    if (autoRanKeyRef.current !== key && !result) {
+      autoRanKeyRef.current = key;
+      void doRun();
+    }
+  }, [isAutoRun, def.id, entry.id, result]);
 
   const panelOutputs = def.outputs.panel ?? [];
 
@@ -64,7 +70,15 @@ export function GenericPanel({ entry, def }: ToolPanelProps) {
               <input
                 type={inp.type === "number" ? "number" : "text"}
                 value={String(inputs[inp.name] ?? "")}
-                onChange={e => setInputs(prev => ({ ...prev, [inp.name]: inp.type === "number" ? parseFloat(e.target.value) : e.target.value }))}
+                onChange={e => setInputs(prev => {
+                  const raw = e.target.value;
+                  if (inp.type !== "number") return { ...prev, [inp.name]: raw };
+                  // Empty field → keep raw "" (treated as default downstream) rather
+                  // than storing NaN, which serializes to JSON null (BUG-7).
+                  if (raw === "") return { ...prev, [inp.name]: inp.default ?? "" };
+                  const n = parseFloat(raw);
+                  return { ...prev, [inp.name]: Number.isNaN(n) ? (inp.default ?? "") : n };
+                })}
                 style={{
                   width: 64, background: "rgba(255,255,255,0.07)",
                   border: "1px solid rgba(255,255,255,0.15)", borderRadius: 3,
@@ -161,13 +175,26 @@ export function GenericPanel({ entry, def }: ToolPanelProps) {
               fontSize: 11, color: "rgba(255,255,255,0.5)",
               fontFamily: "system-ui, sans-serif", lineHeight: 1.6,
             }}>
-              <ReactMarkdown disallowedElements={["script", "iframe", "object", "embed", "form", "input", "button"]} unwrapDisallowed>{def.docs}</ReactMarkdown>
+              <ReactMarkdown
+                disallowedElements={["script", "iframe", "object", "embed", "form", "input", "button"]}
+                unwrapDisallowed
+                urlTransform={safeUrl}
+              >{def.docs}</ReactMarkdown>
             </div>
           )}
         </div>
       )}
     </div>
   );
+}
+
+// Allow only safe link schemes in plugin-supplied markdown; drop javascript:,
+// data:, vbscript:, etc. so `[x](javascript:...)` cannot execute (SEC-6).
+function safeUrl(url: string): string {
+  const u = url.trim();
+  if (/^(https?:|mailto:|#|\/|\.)/i.test(u)) return u;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) return u; // relative / no scheme
+  return "";
 }
 
 function btnStyle(color: string): React.CSSProperties {

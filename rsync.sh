@@ -1,1 +1,0 @@
-rsync -av --exclude-from='.gitignore' --exclude='.git/' ./ ../backup/

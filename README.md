@@ -8,23 +8,27 @@ A next-generation graphing calculator and mathematical research platform. Symbol
 
 ### Desktop app (Windows)
 
+> **Requires:** Docker Desktop running before launch. `run-desktop.bat` checks the Docker API on startup and shows an error dialog if it is not reachable.
+
 ```bat
-install.bat
-run-desktop.bat
+sysops\install.bat
+sysops\run-desktop.bat
 ```
+
+Background services (backend container, Vite dev server) start without opening extra terminal windows. Errors surface as dialog boxes. Close the Electron window to shut everything down cleanly.
 
 ### Desktop app (Linux / macOS)
 
 ```bash
-./install.sh
-./run-desktop.sh
+./sysops/install.sh
+./sysops/run-desktop.sh
 ```
 
 To remove all installed dependencies and build artifacts:
 
 ```bat
-uninstall.bat       # Windows
-./uninstall.sh      # Linux / macOS
+sysops\uninstall.bat       # Windows
+./sysops/uninstall.sh      # Linux / macOS
 ```
 
 ### Browser / Docker (full stack)
@@ -154,12 +158,14 @@ See `sample_plugins/nexus.fourier.ngplugin.json` for a complete working example 
 
 | Action | How |
 |--------|-----|
-| Pan | Click and drag |
+| Pan | Click and drag on the graph |
 | Zoom | Scroll wheel |
 | Hide/show curve | Click the color dot |
 | Remove expression | Click × |
-| Command palette | **Ctrl+Shift+P** |
+| Command palette | **Ctrl+Shift+P** or top-bar **Menu** button |
 | Open/Save (.ngraph) | Top bar buttons (Electron only) |
+| Move window | Click and drag the top bar (Electron only) |
+| Minimize / Maximize / Close | Top-right window control buttons (Electron only) |
 
 ---
 

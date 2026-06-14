@@ -1,5 +1,6 @@
 import pytest
-from ops.algebra import limit, solve, simplify
+
+from ops.algebra import limit, simplify, solve
 
 
 def test_limit_string_point_no_typeerror():

@@ -1,3 +1,6 @@
+# Production stack: built static frontend served by nginx, backend via uvicorn.
+# Dev (hot-reload) is layered on top:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 services:
   backend:
     build:
@@ -5,11 +8,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8000:8000"
-    volumes:
-      - ./backend:/app:ro
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # SEC-5: optional shared token; when set, /compute requires X-Nexus-Token.
+      - NEXUS_API_TOKEN=${NEXUS_API_TOKEN:-}
     restart: unless-stopped
     networks:
       - internal
@@ -23,24 +26,32 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: prod
+      args:
+        # ENV-3: stamp the bundle from the repo-root VERSION (read here so the
+        # build context need not include it). Keep in sync with ./VERSION.
+        - NEXUS_VERSION=${NEXUS_VERSION:-2.0.0}
     ports:
-      - "127.0.0.1:5173:5173"
-    volumes:
-      - ./frontend:/app:ro
-      - /app/node_modules
+      - "127.0.0.1:5173:80"
     environment:
-      - VITE_BACKEND_URL=http://backend:8000
+      # SEC-5: same token as backend; nginx injects it into proxied /api calls
+      # so the renderer never holds it (mirrors the Vite dev proxy).
+      - NEXUS_API_TOKEN=${NEXUS_API_TOKEN:-}
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - internal
       - exposed
-    mem_limit: 512m
+    mem_limit: 256m
     cpus: 1.0
     read_only: true
     tmpfs:
+      # nginx writes its rendered config, pid, and worker caches at runtime.
       - /tmp
+      - /var/cache/nginx
+      - /var/run
+      - /etc/nginx/conf.d
 
 networks:
   internal:

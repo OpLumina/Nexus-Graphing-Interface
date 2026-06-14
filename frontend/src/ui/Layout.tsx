@@ -30,13 +30,7 @@ const NO_DRAG: React.CSSProperties = { WebkitAppRegion: "no-drag" } as React.CSS
 function loadProjectIntoStore(content: string) {
   const data = deserialise(content);
   if (!data) { alert("Could not read file"); return; }
-  const store = useStore.getState();
-  data.expressions.forEach(e => {
-    store.addExpression();
-    const added = useStore.getState().expressions.at(-1)!;
-    store.updateExpression(added.id, e.raw);
-  });
-  store.setViewport(data.viewport);
+  useStore.getState().loadProject(data);
 }
 
 export function Layout() {

@@ -1,0 +1,27 @@
+# Rendered at container start by the nginx image's envsubst step. Only env vars
+# that are actually defined (e.g. NEXUS_API_TOKEN) are substituted, so nginx's
+# own runtime variables ($uri, $host, ...) are left intact.
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Static assets + SPA history fallback.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # SEC-5: reverse-proxy /api -> backend and inject the shared token here, in
+    # the trusted server tier, mirroring the Vite dev proxy. The renderer never
+    # sees NEXUS_API_TOKEN. The trailing slash on proxy_pass strips the /api
+    # prefix (/api/compute -> /compute), matching the dev rewrite. When the
+    # token is unset the header is empty and the backend runs in token-less mode.
+    location /api/ {
+        proxy_pass http://backend:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Nexus-Token "${NEXUS_API_TOKEN}";
+    }
+}

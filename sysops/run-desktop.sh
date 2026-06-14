@@ -4,6 +4,11 @@ cd "$(dirname "$0")/.."
 
 echo "=== NexusGraph Desktop ==="
 
+# SEC-5: per-session shared token. Exported to both the backend (via docker
+# compose) and the Vite proxy (process.env), so /compute only answers calls that
+# carry the matching X-Nexus-Token header — no other local process can reach it.
+export NEXUS_API_TOKEN="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
+
 cleanup() {
   echo ""
   echo "Shutting down..."

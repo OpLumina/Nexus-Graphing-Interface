@@ -1,11 +1,23 @@
 # Development override — hot reload for both services
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Overrides the prod base: backend gets --reload + source mount; frontend swaps
+# the nginx/prod image for the Vite dev-server stage and bind-mounts source.
 
 services:
   backend:
+    volumes:
+      - ./backend:/app:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
+    build:
+      target: dev
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+      # SEC-5: the Vite proxy injects this into /api calls server-side.
+      - NEXUS_API_TOKEN=${NEXUS_API_TOKEN:-}
     volumes:
       - ./frontend:/app
       - /app/node_modules

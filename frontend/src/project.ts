@@ -62,11 +62,25 @@ export function deserialise(text: string): ProjectData | null {
 
     let current: Partial<ExpressionEntry> | null = null;
 
+    // ENV-6: ids come straight from the file. `loadProject` re-issues them, but
+    // direct consumers of `deserialise` would otherwise trust attacker-shaped
+    // strings as object keys. Constrain to a safe charset/length and de-dupe so
+    // a malformed/hostile `.ngraph` can't inject odd keys or clobber entries.
+    let localSeq = 0;
+    const usedIds = new Set<string>();
+    const normalizeId = (raw: string | undefined): string => {
+      let id = (raw ?? "").trim();
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) id = `expr-${++localSeq}`;
+      while (usedIds.has(id)) id = `${id}-${++localSeq}`;
+      usedIds.add(id);
+      return id;
+    };
+
     const flushExpr = () => {
-      if (current?.id && current.raw !== undefined) {
+      if (current && current.raw !== undefined) {
         const parsed = parse(current.raw);
         expressions.push({
-          id: current.id,
+          id: normalizeId(current.id),
           raw: current.raw,
           parsed,
           visible: current.visible ?? true,

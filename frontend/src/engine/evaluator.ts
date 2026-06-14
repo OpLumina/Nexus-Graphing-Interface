@@ -1,10 +1,34 @@
-import { ASTNode } from "./ast";
+import { ASTNode, num } from "./ast";
 import { BUILTINS } from "./builtins";
 
 export type Env = Record<string, number>;
 export type UserFns = Record<string, (args: number[]) => number>;
 
+// Backstop against cyclic definitions (e.g. `f(x) = f(x)`), which would
+// otherwise recurse until a stack overflow. Returning NaN unwinds gracefully.
+//
+// The guard counts *function-call* recursion only — not every AST node — so a
+// deeply nested but legitimate expression (e.g. a 500-term sum) is not falsely
+// tripped (BUG-3). Only cyclic definitions accumulate call depth without bound.
+//
+// ARCH-8: this NaN return is a silent *runtime* backstop, not the user-facing
+// signal. Cyclic/mutually-recursive definitions are detected up front by the
+// store's dependency graph and surfaced as the `CYCLE_ERROR` ("circular
+// reference") annotation on the offending expression (BUG-9, store.ts), so the
+// user sees an explicit error rather than only an empty (NaN) plot. The 256 cap
+// is therefore a defence-in-depth limit on call-recursion *depth*: it bounds any
+// cycle the graph analysis misses (e.g. data-dependent indirect recursion) and
+// caps composition nesting. It is intentionally generous (deep-but-valid
+// composition well under 256 is unaffected); a composition chain longer than
+// this collapses to NaN by design.
+const MAX_CALL_DEPTH = 256;
+let callDepth = 0;
+
 export function evaluate(node: ASTNode, env: Env, userFns: UserFns = {}): number {
+  return evalNode(node, env, userFns);
+}
+
+function evalNode(node: ASTNode, env: Env, userFns: UserFns): number {
   switch (node.kind) {
     case "number":
       return node.value;
@@ -41,31 +65,13 @@ export function evaluate(node: ASTNode, env: Env, userFns: UserFns = {}): number
     }
 
     case "call": {
-      const args = node.args.map(a => evaluate(a, env, userFns));
-
-      if (node.fn.startsWith("__prime__")) {
-        const inner = node.fn.slice("__prime__".length);
-        const paramVar = node.args[0]?.kind === "variable" ? node.args[0].name : "x";
-        const callInner = (xv: number): number => {
-          if (inner.startsWith("__prime__")) {
-            return evaluate({ ...node, fn: inner }, { ...env, [paramVar]: xv }, userFns);
-          }
-          const ufn2 = userFns[inner];
-          if (ufn2) return ufn2([xv, ...args.slice(1)]);
-          const bfn = BUILTINS[inner];
-          if (bfn) return bfn(xv, ...args.slice(1));
-          return NaN;
-        };
-        const h = 1e-7;
-        const x0 = args[0] ?? NaN;
-        return (callInner(x0 + h) - callInner(x0 - h)) / (2 * h);
+      if (callDepth >= MAX_CALL_DEPTH) return NaN;
+      callDepth++;
+      try {
+        return evalCall(node, env, userFns);
+      } finally {
+        callDepth--;
       }
-
-      const ufn = userFns[node.fn];
-      if (ufn) return ufn(args);
-      const fn = BUILTINS[node.fn];
-      if (!fn) return NaN;
-      return fn(...args);
     }
 
     case "piecewise": {
@@ -79,6 +85,38 @@ export function evaluate(node: ASTNode, env: Env, userFns: UserFns = {}): number
     case "error":
       return NaN;
   }
+}
+
+function evalCall(node: Extract<ASTNode, { kind: "call" }>, env: Env, userFns: UserFns): number {
+  const args = node.args.map(a => evaluate(a, env, userFns));
+
+  if (node.fn.startsWith("__prime__")) {
+    const inner = node.fn.slice("__prime__".length);
+    const callInner = (xv: number): number => {
+      if (inner.startsWith("__prime__")) {
+        // Recurse on the numeric perturbation point itself; substitute it as
+        // the first arg so literal/compound arguments (f''(2), f''(2x)) work.
+        return evaluate(
+          { ...node, fn: inner, args: [num(xv), ...node.args.slice(1)] },
+          env, userFns,
+        );
+      }
+      const ufn2 = userFns[inner];
+      if (ufn2) return ufn2([xv, ...args.slice(1)]);
+      const bfn = BUILTINS[inner];
+      if (bfn) return bfn(xv, ...args.slice(1));
+      return NaN;
+    };
+    const h = 1e-7;
+    const x0 = args[0] ?? NaN;
+    return (callInner(x0 + h) - callInner(x0 - h)) / (2 * h);
+  }
+
+  const ufn = userFns[node.fn];
+  if (ufn) return ufn(args);
+  const fn = BUILTINS[node.fn];
+  if (!fn) return NaN;
+  return fn(...args);
 }
 
 export function evaluateBool(node: ASTNode, env: Env, userFns: UserFns = {}): boolean {

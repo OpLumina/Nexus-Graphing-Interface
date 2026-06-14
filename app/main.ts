@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { readFile, writeFile, readdir, mkdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const DEV_URL = "http://localhost:5173";
-const PROD_INDEX = join(__dirname, "../frontend/dist/index.html");
+const PROD_DIST_DIR = join(__dirname, "../frontend/dist");
+const PROD_INDEX = join(PROD_DIST_DIR, "index.html");
 const isDev = !app.isPackaged;
 
 function createWindow(): BrowserWindow {
@@ -18,8 +20,32 @@ function createWindow(): BrowserWindow {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
+
+  // Deny all attempts to open new windows; route external links to the OS
+  // browser instead of spawning a renderer that still holds the electronAPI
+  // bridge (ENV-2).
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  // Block in-page navigation away from the app's own origin so a stray link or
+  // compromised renderer cannot load a remote page that retains the bridge.
+  // ENV-9: in prod the guard is scoped to the bundled dist directory's file URL
+  // — a bare `file://` prefix would let a compromised renderer navigate to any
+  // local file (`file:///etc/passwd`, `file:///C:/...`). The trailing separator
+  // ensures only paths *inside* dist match (not a sibling `dist-evil/`).
+  const allowedOrigin = isDev
+    ? DEV_URL
+    : pathToFileURL(PROD_DIST_DIR + sep).href;
+  const guardNavigation = (event: Electron.Event, url: string) => {
+    if (!url.startsWith(allowedOrigin)) event.preventDefault();
+  };
+  win.webContents.on("will-navigate", guardNavigation);
+  win.webContents.on("will-redirect", guardNavigation);
 
   if (isDev) {
     win.loadURL(DEV_URL);
@@ -117,5 +143,14 @@ ipcMain.handle("file:quick-save", async (_event, content: string) => {
 
 ipcMain.handle("file:load-save", async (_event, name: string) => {
   const dir = getSavesDir();
-  return readFile(join(dir, name), "utf-8");
+  // Reject path traversal: the resolved target must stay inside the saves dir.
+  if (typeof name !== "string" || name.includes("/") || name.includes("\\") || name.includes("..")) {
+    throw new Error("Invalid save name");
+  }
+  const dirResolved = resolve(dir);
+  const target = resolve(dirResolved, name);
+  if (target !== dirResolved && !target.startsWith(dirResolved + sep)) {
+    throw new Error("Invalid save name");
+  }
+  return readFile(target, "utf-8");
 });

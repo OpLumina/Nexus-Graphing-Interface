@@ -71,7 +71,12 @@ class Parser {
 
   parseFull(): ParsedExpression {
     try {
-      return this.parseTop();
+      const result = this.parseTop();
+      if (!this.at("EOF")) {
+        const t = this.peek();
+        throw new Error(`Unexpected trailing token: ${t.kind} ("${t.value}")`);
+      }
+      return result;
     } catch (e) {
       return { type: "error", message: String(e), raw: "" };
     }
@@ -166,31 +171,35 @@ class Parser {
   }
 
   private parseImplicitMul(): ASTNode {
-    let left = this.parsePower();
+    let left = this.parseUnary();
     while (
       this.at("number", "ident", "(") ||
       (this.at("ident") && !["EOF", ")", "]", "}", ",", "=", "<", ">", "<=", ">="].includes(this.peek().kind))
     ) {
       const next = this.peek().kind;
       if (["EOF", ")", "]", "}", ",", "=", "<", ">", "<=", ">=", "+", "-", "*", "/", "^"].includes(next)) break;
-      left = binop("*", left, this.parsePower());
+      left = binop("*", left, this.parseUnary());
     }
     return left;
   }
 
+  // Unary minus binds looser than `^` so `-x^2` parses as `-(x^2)`, matching
+  // conventional math and CAS behavior.
+  private parseUnary(): ASTNode {
+    if (this.at("-")) { this.advance(); return unary("-", this.parseUnary()); }
+    if (this.at("+")) { this.advance(); return this.parseUnary(); }
+    return this.parsePower();
+  }
+
+  // `^` is right-associative: `2^3^2` parses as `2^(3^2)`. The exponent is
+  // parsed via parseUnary so `2^-3` and the right-assoc recursion both work.
   private parsePower(): ASTNode {
-    const base = this.parseUnary();
+    const base = this.parsePrimary();
     if (this.at("^")) {
       this.advance();
       return binop("^", base, this.parseUnary());
     }
     return base;
-  }
-
-  private parseUnary(): ASTNode {
-    if (this.at("-")) { this.advance(); return unary("-", this.parsePrimary()); }
-    if (this.at("+")) { this.advance(); return this.parsePrimary(); }
-    return this.parsePrimary();
   }
 
   private parsePrimary(): ASTNode {

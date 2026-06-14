@@ -47,3 +47,7 @@ CLAUDE.md
 handoff.md
 spec.md
 plan.md
+.claudeignore
+
+# Personal helper scripts (machine-local, not part of the shared project — BP-6)
+rsync.sh

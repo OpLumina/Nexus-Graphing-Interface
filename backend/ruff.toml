@@ -1,0 +1,19 @@
+# BP-2: backend lint config. Mirrors the frontend's "safe rules" posture —
+# catch unused imports/vars, undefined names, import ordering, obvious bugs,
+# and outdated idioms without imposing opinionated formatting churn.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["__pycache__", "tests/__pycache__"]
+
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes (unused imports/vars, undefined names)
+  "I",   # isort (import ordering)
+  "B",   # flake8-bugbear (likely bugs)
+  "UP",  # pyupgrade (modern syntax)
+  "W",   # pycodestyle warnings
+]
+# E501 (line too long) is reported but not worth blocking math-heavy strings;
+# keep it visible via the formatter instead of failing lint on it.
+ignore = ["E501"]

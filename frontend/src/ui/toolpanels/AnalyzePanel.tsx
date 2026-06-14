@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "../../store";
 import { MathDisplay } from "../MathDisplay";
 import type { ToolPanelProps } from "./GenericPanel";
@@ -31,7 +31,6 @@ export function AnalyzePanel({ entry, def }: ToolPanelProps) {
   const toolResults     = useStore(s => s.toolResults);
 
   const [loading, setLoading]   = useState(false);
-  const [autoRan, setAutoRan]   = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const resultKey = `${def.id}:${entry.id}`;
@@ -43,7 +42,17 @@ export function AnalyzePanel({ entry, def }: ToolPanelProps) {
     setLoading(false);
   };
 
-  if (!autoRan && !result) { setAutoRan(true); void doRun(); }
+  // Track which (tool, expression) pair we auto-ran for, not a bare boolean, so
+  // a reused panel instance re-runs when entry.id changes (BUG-12) while still
+  // deduping repeat effect fires for the same pair.
+  const autoRanKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${def.id}:${entry.id}`;
+    if (autoRanKeyRef.current !== key && !result) {
+      autoRanKeyRef.current = key;
+      void doRun();
+    }
+  }, [def.id, entry.id, result]);
 
   if (!result) {
     return <div style={{ ...dim, padding: "4px 0" }}>{loading ? "Analyzing…" : "—"}</div>;

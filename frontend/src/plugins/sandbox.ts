@@ -1,84 +1,132 @@
-// Sandboxed execution of plugin inline JS.
-// Uses new Function() with a tightly restricted scope.
+// Sandboxed execution of plugin inline JS in a dedicated Worker realm (SEC-1).
 //
-// ⚠ CSP NOTE: new Function() requires 'unsafe-eval' in the Content-Security-Policy.
-// In Electron, add to the BrowserWindow webPreferences:
-//   webPreferences: { additionalArguments: ["--allow-running-insecure-content"] }
-// and in the meta CSP tag:
-//   <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval'">
+// Plugin code runs in a Worker (sandbox.worker.ts), NOT the main window realm.
+// The Worker global scope has no DOM, no `window`, and crucially no
+// `electronAPI` file bridge (preload.ts), so the constructor-chain escape
+// (`({}).constructor.constructor`) can at most reach the Worker's own globals —
+// it cannot read/write local files or touch the UI. Network globals (fetch/WS)
+// exist in the Worker but CSP `connect-src` (index.html) blocks exfiltration to
+// non-backend hosts. The Worker is also terminated after RUN_TIMEOUT_MS, so a
+// runaway / infinite-loop plugin cannot hang the app.
 //
-// For a web deployment, replace new Function() with a Worker + MessageChannel instead.
+// `ctx.userFns` are JS closures and cannot be structured-cloned across
+// postMessage, so we forward only the serializable parts of the context
+// (env, viewport, expressions-as-plain-AST, exprId); the Worker rebuilds an
+// identical userFns map from the pure engine (engine/userfns.ts), preserving the
+// synchronous `fn([x])` call API plugins use inside tight loops.
 
 import type { ToolContext, ToolResult, ToolInputValues } from "../tools/types";
 
-// Restricted Math subset exposed to plugins — no exotic globals.
-const SAFE_MATH = {
-  abs: Math.abs, acos: Math.acos, acosh: Math.acosh,
-  asin: Math.asin, asinh: Math.asinh, atan: Math.atan, atan2: Math.atan2, atanh: Math.atanh,
-  cbrt: Math.cbrt, ceil: Math.ceil, cos: Math.cos, cosh: Math.cosh,
-  exp: Math.exp, expm1: Math.expm1, floor: Math.floor, hypot: Math.hypot,
-  log: Math.log, log1p: Math.log1p, log2: Math.log2, log10: Math.log10,
-  max: Math.max, min: Math.min, pow: Math.pow, random: Math.random,
-  round: Math.round, sign: Math.sign, sin: Math.sin, sinh: Math.sinh,
-  sqrt: Math.sqrt, tan: Math.tan, tanh: Math.tanh, trunc: Math.trunc,
-  PI: Math.PI, E: Math.E, LN2: Math.LN2, LN10: Math.LN10,
-  SQRT2: Math.SQRT2, LOG2E: Math.LOG2E, LOG10E: Math.LOG10E,
-};
+// Wall-clock budget for a single plugin run. Past this the Worker is terminated.
+const RUN_TIMEOUT_MS = 5000;
 
-// Additional numeric utilities available to plugins.
-const UTILS = {
-  linspace: (start: number, end: number, n: number): number[] => {
-    const arr: number[] = [];
-    for (let i = 0; i < n; i++) arr.push(start + (i / (n - 1)) * (end - start));
-    return arr;
-  },
-  range: (start: number, end: number, step = 1): number[] => {
-    const arr: number[] = [];
-    for (let v = start; v < end; v += step) arr.push(v);
-    return arr;
-  },
-  sum:  (arr: number[]): number => arr.reduce((a, b) => a + b, 0),
-  mean: (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length,
-  dot:  (a: number[], b: number[]): number => a.reduce((s, v, i) => s + v * b[i], 0),
-};
+// ARCH-6: pool ONE long-lived Worker instead of spinning a fresh module worker
+// up (+ re-bundling sandbox.worker.ts) on every runSandboxed call — that cost
+// dominates for tools run interactively or in tight loops. The worker is reused
+// across runs and only recreated after a timeout/error kill. Concurrent runs are
+// correlated by a monotonic reqId so replies route back to the right caller.
+type Pending = (result: ToolResult) => void;
+
+let pooledWorker: Worker | null = null;
+let pending = new Map<number, Pending>();
+let nextReqId = 1;
+
+function makeWorker(): Worker {
+  const w = new Worker(new URL("./sandbox.worker.ts", import.meta.url), { type: "module" });
+
+  w.onmessage = (e: MessageEvent<ToolResult & { __reqId?: number }>) => {
+    const r = e.data;
+    const reqId = r?.__reqId;
+    if (typeof reqId !== "number") return;
+    const resolve = pending.get(reqId);
+    if (!resolve) return;
+    pending.delete(reqId);
+    if (typeof r !== "object" || r === null || typeof r.ok !== "boolean") {
+      resolve({ ok: false, error: "Plugin run() must return { ok, data, overlays? }", data: {} });
+    } else {
+      resolve(r);
+    }
+  };
+
+  // A worker-level error tears down the shared realm, so fail every in-flight
+  // run and force a fresh worker on the next call.
+  w.onerror = (e) => killWorker({ ok: false, error: `Plugin error: ${e.message || "worker error"}`, data: {} });
+
+  return w;
+}
+
+function getWorker(): Worker {
+  if (!pooledWorker) pooledWorker = makeWorker();
+  return pooledWorker;
+}
+
+// Terminate the pooled worker and reject all in-flight runs with `result`. Used
+// on timeout (runaway plugin) or worker error — the realm is shared, so one
+// fatal run takes the worker down and the next call lazily rebuilds it.
+function killWorker(result: ToolResult): void {
+  pooledWorker?.terminate();
+  pooledWorker = null;
+  const inflight = pending;
+  pending = new Map();
+  for (const resolve of inflight.values()) resolve(result);
+}
 
 /**
- * Execute a plugin's inline JS in a restricted sandbox.
- * The code string must define a function `run(inputs, ctx)` that returns a ToolResult
- * or a Promise<ToolResult>.
+ * Execute a plugin's inline JS in a Worker sandbox.
+ * The code string must define a function `run(inputs, ctx)` that returns a
+ * ToolResult or a Promise<ToolResult>.
  */
 export async function runSandboxed(
   js: string,
   inputs: ToolInputValues,
   ctx: ToolContext,
 ): Promise<ToolResult> {
-  try {
-    // Construct the function with only safe globals in scope.
-    // "use strict" prevents access to the outer `this`.
-    // Shadow browser globals so plugin code cannot escape to DOM/network.
-    // "use strict" removes implicit `this`; shadowed params override the outer scope.
-    const factory = new Function(
-      "inputs", "ctx", "Math", "utils",
-      "globalThis", "window", "document", "self", "location", "fetch", "XMLHttpRequest",
-      `"use strict";\n${js}\nreturn run(inputs, ctx);`,
-    );
-
-    const result = await Promise.resolve(
-      factory(inputs, ctx, SAFE_MATH, UTILS,
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined)
-    );
-
-    // Validate shape
-    if (typeof result !== "object" || typeof result.ok !== "boolean") {
-      return { ok: false, error: "Plugin run() must return { ok, data, overlays? }", data: {} };
-    }
-
-    return result as ToolResult;
-  } catch (err) {
-    return {
-      ok: false,
-      error: `Plugin error: ${String(err)}`,
-      data: {},
-    };
+  if (typeof Worker === "undefined") {
+    return { ok: false, error: "Plugin sandbox unavailable (no Worker support)", data: {} };
   }
+
+  const reqId = nextReqId++;
+
+  // Only the structured-cloneable parts of the context cross the boundary;
+  // userFns (closures) are rebuilt inside the Worker.
+  const payload = {
+    reqId,
+    js,
+    inputs,
+    ctx: {
+      env:         ctx.env,
+      viewport:    ctx.viewport,
+      expressions: ctx.expressions,
+      exprId:      ctx.exprId,
+    },
+  };
+
+  return new Promise<ToolResult>((resolve) => {
+    let done = false;
+    const finish = (result: ToolResult): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      pending.delete(reqId);
+      resolve(result);
+    };
+
+    // On timeout, kill the shared worker (the only way to stop a runaway plugin);
+    // killWorker rejects any other in-flight runs too, so guard `done` first.
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      pending.delete(reqId);
+      killWorker({ ok: false, error: `Plugin timed out after ${RUN_TIMEOUT_MS} ms`, data: {} });
+      resolve({ ok: false, error: `Plugin timed out after ${RUN_TIMEOUT_MS} ms`, data: {} });
+    }, RUN_TIMEOUT_MS);
+
+    pending.set(reqId, finish);
+
+    try {
+      getWorker().postMessage(payload);
+    } catch (err) {
+      finish({ ok: false, error: `Plugin context not serializable: ${String(err)}`, data: {} });
+    }
+  });
 }

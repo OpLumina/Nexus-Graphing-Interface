@@ -44,8 +44,14 @@ export type PluginOperationSpec =
        *  Available globals: Math, inputs, ctx.
        *  ctx = { env, userFns, viewport, expressions, exprId }
        *  Must return: { ok: boolean, data: Record<string, unknown>, overlays?: OverlayLine[] }
-       */
-      js: string;
+       *
+       *  BP-4: may be a single string OR an array of source lines (joined with
+       *  "\n") so the code stays reviewable in the JSON instead of one escaped
+       *  line. Normalized to a string before execution. */
+      js: string | string[];
+      /** BP-4: optional `sha256-<base64>` digest over the resolved js source.
+       *  When present, the loader rejects the plugin on mismatch. */
+      integrity?: string;
     }
   | {
       type: "backend";

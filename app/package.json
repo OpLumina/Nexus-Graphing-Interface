@@ -1,0 +1,29 @@
+{
+  "name": "nexusgraph-desktop",
+  "productName": "NexusGraph",
+  "version": "2.0.0",
+  "description": "NexusGraph desktop shell (Electron)",
+  "private": true,
+  "main": "dist/main.js",
+  "build": {
+    "appId": "com.nexusgraph.desktop",
+    "productName": "NexusGraph",
+    "files": [
+      "dist/**/*",
+      "../frontend/dist/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "hardenedRuntime": true
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
