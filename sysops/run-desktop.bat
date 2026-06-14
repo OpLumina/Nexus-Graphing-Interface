@@ -70,12 +70,5 @@ goto :eof
 :: ── subroutine: show a MessageBox error dialog ─────────────────────────────
 :msgbox
 set "MSGBOX_TEXT=%~1"
-powershell -NoProfile -Command ^
-  "Add-Type -AssemblyName System.Windows.Forms; ^
-   [void][System.Windows.Forms.MessageBox]::Show( ^
-     $env:MSGBOX_TEXT, ^
-     'NexusGraph', ^
-     [System.Windows.Forms.MessageBoxButtons]::OK, ^
-     [System.Windows.Forms.MessageBoxIcon]::Error ^
-   )"
+powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.MessageBox]::Show($env:MSGBOX_TEXT, 'NexusGraph', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)"
 goto :eof

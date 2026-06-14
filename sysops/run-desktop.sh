@@ -41,5 +41,5 @@ sleep 5
 
 echo ""
 echo "[4/4] Compiling and launching Electron..."
-./node_modules/.bin/tsc -p tsconfig.electron.json
-./node_modules/.bin/electron app/dist/main.js
+./frontend/node_modules/.bin/tsc -p tsconfig.electron.json
+./frontend/node_modules/.bin/electron app/dist/main.js
