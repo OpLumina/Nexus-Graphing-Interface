@@ -31,9 +31,8 @@ docker compose up backend -d
 
 echo ""
 echo "[2/4] Starting frontend dev server..."
-cd frontend && npm run dev &
+(cd frontend && npm run dev) &
 FRONTEND_PID=$!
-cd ..
 
 echo ""
 echo "[3/4] Waiting for frontend dev server to be ready..."
