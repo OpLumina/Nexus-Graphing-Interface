@@ -3,7 +3,13 @@ import { readFile, writeFile, readdir, mkdir, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEV_URL = "http://localhost:5173";
+// The launcher (sysops/run-desktop.sh) owns the dev-server port and passes the
+// resulting URL through NEXUS_DEV_URL so Electron always connects to the server
+// it actually started. Hardcoding :5173 here let Electron hit a *different*
+// server when ours fell back to another port — including a stale orphan whose
+// working dir had been deleted, which crashes Rolldown with "Failed to get
+// current dir". Fall back to :5173 for a plain `npm run electron`.
+const DEV_URL = process.env.NEXUS_DEV_URL ?? "http://localhost:5173";
 const PROD_DIST_DIR = join(__dirname, "../frontend/dist");
 const PROD_INDEX = join(PROD_DIST_DIR, "index.html");
 const isDev = !app.isPackaged;

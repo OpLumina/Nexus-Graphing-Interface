@@ -22,6 +22,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Bind exactly :5173 or exit — never silently move to :5174. Electron loads
+    // a fixed dev URL, so a drifting port left it connecting to whatever stale
+    // server happened to hold :5173 (see app/main.ts NEXUS_DEV_URL note).
+    strictPort: true,
     proxy: {
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
