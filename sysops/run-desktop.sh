@@ -31,7 +31,8 @@ docker compose up backend -d
 
 echo ""
 echo "[2/4] Starting frontend dev server..."
-(cd frontend && npm run dev) &
+FRONTEND_DIR="$(pwd)/frontend"
+(cd "$FRONTEND_DIR" && npx vite "$FRONTEND_DIR") &
 FRONTEND_PID=$!
 
 echo ""
